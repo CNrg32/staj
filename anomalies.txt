@@ -1,0 +1,14 @@
+Anormallik: iPhone 16 Pro 128 GB
+  Site Fiyatı: 70999 TL
+  Benim Fiyatım: 85000 TL
+  Fark (%): 16.47%
+
+Anormallik: iPhone 15 128 GB
+  Site Fiyatı: 50499 TL
+  Benim Fiyatım: 70000 TL
+  Fark (%): 27.86%
+
+Anormallik: iPhone 15 Pro Max 256 GB
+  Site Fiyatı: 74999 TL
+  Benim Fiyatım: 95000 TL
+  Fark (%): 21.05%
