@@ -1,7 +1,6 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const fs = require('fs');
-
+const fs = require("fs");
 puppeteer.use(StealthPlugin());
 
 
@@ -36,7 +35,10 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 OPR/115.0.0.0');
 
     const myPrices = await processPdf(pdfPath);
+    console.log(myPrices)
 
+
+    console.log(myPrices)
     const items = []; // Tüm ürün objelerini saklamak için array
     const anomalies = []; // Anormallik bulunan ürünler
     let id = 1; // ID sırası
@@ -45,7 +47,7 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
         console.log(`"${link}" için bilgi alınıyor...`);
 
 
-        if (count >= 3) break; // 3 üründen sonra döngüyü durdur
+       
         await page.goto(link, { waitUntil: 'networkidle2' });
 
         // Ürün adı ve fiyatlarını çek
@@ -66,10 +68,17 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
             };
         });
 
-        // MyPrices sözlüğünden ilgili fiyatı al
-        const productKey = Object.keys(myPrices).find(key => result.name.includes(key));
+        
+
+       // MyPrices sözlüğünden ilgili fiyatı al
+const productKey = Object.keys(myPrices).find(key => 
+    result.name.replace(/\s+/g, "").toLowerCase().includes(key.replace(/\s+/g, "").toLowerCase())
+);
+
+        console.log(productKey)
         const myPrice = myPrices[productKey] || 0;
 
+        
         // Yeni bir Item objesi oluştur ve listeye ekle
         const item = new Item(id, result.name, myPrice, result.sitePrice, link);
         items.push(item);
@@ -121,43 +130,42 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
     await browser.close();
 })();
 
-// PDF işleme fonksiyonu
+
+const pdf = require("pdf-parse");
+
 async function processPdf(filePath) {
     try {
-        const dataBuffer = fs.readFileSync(filePath);
-        const pdfData = await pdf(dataBuffer);
-        const lines = pdfData.text.split("\n");
+        const dataBuffer = fs.readFileSync(filePath); // PDF dosyasını oku
+        const pdfData = await pdf(dataBuffer);       // PDF içeriğini ayıkla
+        const lines = pdfData.text.split("\n");      // Metni satır bazlı böl
 
         const itemsDictionary = {};
-        const colors = [
-            "Kırmızı", "Mor", "Beyaz", "Siyah", "Lacivert",
-            "Gümüş", "Pembe", "Açık Mavi", "Krem", "Gri", "Titanyum", "Çöl"
-        ];
 
+        // Satırları filtrele ve işlem yap
         lines
-            .filter(line => line.includes("₺"))
+            .filter(line => line.includes("₺")) // Fiyat bilgisi içermeyen satırları atla
             .forEach(line => {
-                const priceMatch = line.match(/([\d.,]+)₺$/);
-                if (priceMatch) {
-                    const price = parseFloat(priceMatch[1].replace(".", "").replace(",", "."));
-                    let product = line.replace(priceMatch[0], "").replace(/\s+/g, " ").trim();
+                try {
+                    // Satırdan fiyat bilgisi al
+                    const priceMatch = line.match(/([\d.,]+)₺$/);
+                    if (priceMatch) {
+                        const price = parseFloat(priceMatch[1].replace(".", "").replace(",", ".")); // Fiyatı parse et
+                        let product = line.replace(priceMatch[0], "").replace(/\s+/g, " ").trim(); // Ürün adını temizle
+                        
+                        // Ürünün adındaki tüm boşlukları kaldır
+                        product = product.replace(/\s+/g, "");
 
-                    if (product.includes(",")) {
-                        const parts = product.split(",").map(p => p.trim());
-                        const baseProduct = parts.shift();
-                        const firstColor = colors.find(color => baseProduct.includes(color));
+                        // Renk kısmını kaldır (Eğer varsa, tanımlı renklerden bağımsız olarak)
+                        product = product.replace(/(Kırmızı|Mor|Beyaz|Siyah|Yeşil|Lacivert|Gümüş|Pembe|AçıkMavi|Krem|Gri|Titanyum|Çöl)/gi, "");
 
-                        if (firstColor) {
-                            const baseName = baseProduct.replace(firstColor, "").trim();
-                            const allColors = [firstColor, ...parts];
+                        // Ürünün adındaki gereksiz virgülleri kaldır
+                        product = product.replace(/,+/g, ""); // Fazla virgülleri temizle
 
-                            allColors.forEach(color => {
-                                itemsDictionary[`${baseName} ${color.trim()}`] = price;
-                            });
-                        }
-                    } else {
+                        // Ürünü sözlüğe ekle
                         itemsDictionary[product] = price;
                     }
+                } catch (lineError) {
+                    console.error("Satır işleme hatası:", line, lineError);
                 }
             });
 
@@ -167,3 +175,5 @@ async function processPdf(filePath) {
         return {};
     }
 }
+
+
