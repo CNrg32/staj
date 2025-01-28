@@ -4,12 +4,27 @@ const fs = require('fs');
 
 puppeteer.use(StealthPlugin());
 
-const pdf = require("pdf-parse");
+
 let count = 0;
 // Rastgele bir süre beklemek için sleep fonksiyonu
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+// Item sınıfı
+class Item {
+    constructor(id, name, price, sitePrice, link) {
+        this.id = id;
+        this.name = name;
+        this.price = price;
+        this.sitePrice = sitePrice;
+        this.link = link;
+    }
+}
+
+// Dosyadan linkleri oku
+const fileContent = fs.readFileSync('./link.txt', 'utf-8');
+const links = fileContent.match(/https?:\/\/[^\s]+/g); // Tüm linkleri çıkar
 
 const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
 
@@ -22,97 +37,89 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
 
     const myPrices = await processPdf(pdfPath);
 
-    const results = [];
-    const anomalies = [];
+    const items = []; // Tüm ürün objelerini saklamak için array
+    const anomalies = []; // Anormallik bulunan ürünler
+    let id = 1; // ID sırası
 
-    for (const product in myPrices) {
-        console.log(`"${product}" için arama yapılıyor...`);
+    for (const link of links) {
+        console.log(`"${link}" için bilgi alınıyor...`);
 
-       
-        // 1-5 saniye arasında rastgele bekle
-        const delay = Math.floor(Math.random() * (5000 - 1000 + 1)) + 1000; // 1000ms-5000ms arası
-        console.log(`Bekleniyor: ${delay / 1000} saniye`);
-        await sleep(delay);
 
-        const searchQuery = product.replace(/ /g, '+');
-        const url = `https://www.akakce.com/arama/?q=${searchQuery}`;
-        await page.goto(url, { waitUntil: 'networkidle2' });
+        if (count >= 3) break; // 3 üründen sonra döngüyü durdur
+        await page.goto(link, { waitUntil: 'networkidle2' });
 
+        // Ürün adı ve fiyatlarını çek
         const result = await page.evaluate(() => {
-            const firstProduct = document.querySelector('li[data-pr]');
-            const price = firstProduct?.querySelector('span.pt_v8')?.innerText.trim() || 'N/A';
-            const name = firstProduct?.querySelector('a[title]')?.getAttribute('title') || 'N/A';
-            return { name, price };
+            // Ürün adı
+            const name = document.querySelector('h1')?.innerText.trim() || 'Ürün adı bulunamadı';
+
+            // Sayfanın üst kısmındaki genel fiyat
+            const priceText = document.querySelector('.pd_v8')?.innerText.trim() || '0';
+
+            // Satıcı fiyatlarından en düşük fiyat
+            const sellerPriceText = document.querySelector('span.pb_v8')?.innerText.trim() || '0';
+
+            return {
+                name,
+                sitePrice: parseFloat(sellerPriceText.replace(/\./g, '').replace(',', '.')) || 0,
+                pagePrice: parseFloat(priceText.replace(/\./g, '').replace(',', '.')) || 0,
+            };
         });
+
+        // MyPrices sözlüğünden ilgili fiyatı al
+        const productKey = Object.keys(myPrices).find(key => result.name.includes(key));
+        const myPrice = myPrices[productKey] || 0;
+
+        // Yeni bir Item objesi oluştur ve listeye ekle
+        const item = new Item(id, result.name, myPrice, result.sitePrice, link);
+        items.push(item);
+
+        // Anormallik hesabı yap
+        if (myPrice > 0 && result.sitePrice > 0) {
+            const difference = Math.abs(myPrice - result.sitePrice);
+            const percentageDifference = (difference / myPrice) * 100;
+
+            // %1'den büyük farkları anormallik olarak kaydet
+            if (percentageDifference > 1) {
+                anomalies.push({
+                    name: result.name,
+                    myPrice: myPrice,
+                    sitePrice: result.sitePrice,
+                    percentageDifference: percentageDifference.toFixed(2),
+                });
+            }
+        }
+
+        count++;
+        id++; // ID'yi artır
+
+        // İstekler arası gecikme
+        await sleep(Math.floor(Math.random() * (5000 - 1000 + 1)) + 1000); // 1-5 saniye
         
-       // Fiyatı işleyerek kuruş kısmını çıkar
-let numericPrice = result.price.replace(/\./g, '').replace(',', ''); // Nokta ve virgülleri kaldır
-const myPrice = myPrices[product]; // Bizim fiyatımız
-
-numericPrice = Math.floor(parseInt(numericPrice) / 100); // 100'e bölerek kuruş kısmını çıkar
-console.log("bizim fiyat:" + myPrice)
-console.log("site fiyatı:" + numericPrice)
-if (true) {
-    const difference = Math.abs(myPrice - numericPrice); // Fiyat farkını hesapla
-    const percentageDifference = (difference / myPrice) * 100; // Yüzde farkı hesapla
-
-   
-    console.log(difference)
-    // %1'den büyük farkları anormallik olarak kaydet
-    if (percentageDifference > 1) {
-        anomalies.push({
-            name: result.name,
-            sitePrice: numericPrice,
-            myPrice: myPrice,
-            percentageDifference: percentageDifference.toFixed(2),
-        });
-    }
-}
-
-// Sonuçları kaydet
-results.push({
-    name: result.name,
-    price: result.price,
-    numericPrice: numericPrice,
-});
-count++; // Sayaç artır
-console.log(`"${product}" için sonuç bulundu:`, result);
-
-
     }
 
+    console.log('Ürünler oluşturuldu:', items);
 
+    // Objeleri bir dosyaya yazdır
+    fs.writeFileSync('items.json', JSON.stringify(items, null, 2), 'utf-8');
+    console.log('Ürün objeleri items.json dosyasına kaydedildi.');
 
-    const combined = results.map(item => `${item.name} - ${item.price}`).join('\n');
-    fs.writeFileSync('productInfo.txt', combined, 'utf-8');
-    console.log('Ürün isimleri ve fiyatları productInfo.txt dosyasına kaydedildi.');
-
+    // Anormallikleri anormal.txt dosyasına yazdır
     if (anomalies.length > 0) {
         const anomalyReport = anomalies.map(item => {
             return `Anormallik: ${item.name}\n` +
                 `  Site Fiyatı: ${item.sitePrice} TL\n` +
-                `  Benim Fiyatım: ${item.myPrice} TL\n` +
+                `  Bizim Fiyatımız: ${item.myPrice} TL\n` +
                 `  Fark (%): ${item.percentageDifference}%\n`;
         }).join('\n');
-        fs.writeFileSync('anomrmal.txt', anomalyReport, 'utf-8');
-        console.log('Anormallikler anomalies.txt dosyasına kaydedildi.');
+        fs.writeFileSync('anormal.txt', anomalyReport, 'utf-8');
+        console.log('Anormallikler anormal.txt dosyasına kaydedildi.');
     } else {
         console.log('Anormallik tespit edilmedi.');
     }
 
     await browser.close();
 })();
-
-
-
-
-
-
-
-
-
-
-
 
 // PDF işleme fonksiyonu
 async function processPdf(filePath) {
