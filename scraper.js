@@ -97,7 +97,6 @@ const result = await page.evaluate(() => {
     // İlk 5 fiyatın ortalamasını al
     const averagePrice = firstFivePrices.reduce((sum, price) => sum + price, 0) / firstFivePrices.length;
 
-
   /*  // Ortalama ve standart sapma hesaplama
     const mean = validPrices.reduce((sum, val) => sum + val, 0) / validPrices.length;
     const variance = validPrices.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / validPrices.length;
@@ -134,12 +133,13 @@ return {
         const percentageDifference = (difference / myPrice) * 100;
 
         // %10'dan büyük farkları kontrol et
-        if (percentageDifference > 10) {
+        if (percentageDifference > 0) {
             anomalies.push({
                 name: result.name,
                 myPrice: myPrice,
                 sitePrice: result.sitePrice,
-                percentageDifference: percentageDifference.toFixed(2)
+                percentageDifference: percentageDifference.toFixed(2),
+                link: link // Doğru şekilde link'i atıyoruz
             });
 
             // E-posta gönderimi
@@ -151,7 +151,7 @@ Site Fiyatı: ${result.sitePrice} TL
 Fark (%): ${percentageDifference.toFixed(2)}%
 Link: ${link}
             `;
-            await sendEmail(subject, message); // E-posta gönder
+           
         }
 
 
@@ -162,9 +162,27 @@ Link: ${link}
     count++;
     await sleep(Math.floor(Math.random() * (5000 - 1000 + 1)) + 1000);
 }
-    
 
     console.log('Ürünler oluşturuldu:', items);
+
+     // Anormallikleri toplu e-posta ile gönder
+    if (anomalies.length > 0) {
+        const anomalyReport = anomalies.map(item => {
+            return `Anormallik: ${item.name}\n` +
+                `  Bizim Fiyatımız: ${item.myPrice} TL\n` +
+                `  Site Fiyatı: ${item.sitePrice} TL\n` +
+                `  Fark (%): ${item.percentageDifference}%\n` +
+                `  Link: ${item.link}\n`; // Link'i ekliyoruz
+        }).join('\n');
+
+        const subject = "Anormallik Tespit Raporu";
+        const message = `Aşağıdaki ürünlerde anormallik tespit edilmiştir:\n\n${anomalyReport}`;
+        await sendEmail(subject, message); // E-posta gönder
+    } else {
+        const subject = "Anormallik Tespit Raporu";
+        const message = "Hiçbir anormallik tespit edilmemiştir.";
+        await sendEmail(subject, message); // E-posta gönder
+    }
 
     // Objeleri bir dosyaya yazdır
     fs.writeFileSync('items.json', JSON.stringify(items, null, 2), 'utf-8');
@@ -174,9 +192,10 @@ Link: ${link}
     if (anomalies.length > 0) {
         const anomalyReport = anomalies.map(item => {
             return `Anormallik: ${item.name}\n` +
-                `  Site Fiyatı: ${item.sitePrice} TL\n` +
                 `  Bizim Fiyatımız: ${item.myPrice} TL\n` +
-                `  Fark (%): ${item.percentageDifference}%\n`;
+                `  Site Fiyatı: ${item.sitePrice} TL\n` +
+                `  Fark (%): ${item.percentageDifference}%\n` +
+                `  Link: ${item.link}\n`; // Link'i ekliyoruz
         }).join('\n');
         fs.writeFileSync('anormal.txt', anomalyReport, 'utf-8');
         console.log('Anormallikler anormal.txt dosyasına kaydedildi.');
@@ -261,5 +280,3 @@ async function sendEmail(subject, message) {
     }
 }
 
-// Örnek çağrı
-sendEmail("Başlık", "Bu bir test e-postasıdır.");
