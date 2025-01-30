@@ -54,54 +54,72 @@ for (const link of links) {
     console.log(`"${link}" için bilgi alınıyor...`);
 
 
-    if(count >= 3) break;
+    if(count >= 10) break;
     await page.goto(link, { waitUntil: "networkidle2" });
 
-    const result = await page.evaluate(() => {
-        function extractPrice(text) {
-            return parseFloat(text.replace(/\./g, '').replace(',', '.')) || 0;
-        }
+const result = await page.evaluate(() => {
+    function extractPrice(text) {
+        return parseFloat(text.replace(/\./g, '').replace(',', '.')) || 0;
+    }
 
-        // Ürün adı çekme
-        const name = document.querySelector('h1')?.innerText.trim() || 'Ürün adı bulunamadı';
+    // Ürün adı çekme
+    const name = document.querySelector('h1')?.innerText.trim() || 'Ürün adı bulunamadı';
 
-        // 1️⃣ Akakçe'deki bilinen fiyat alanlarını kontrol et
-        let priceElements = [
-            ...document.querySelectorAll('.pd_v8, span.pb_v8, .some-other-class') // Farklı fiyat class'ları eklenebilir
-        ].map(el => el.innerText.trim());
+    // Satış isimlerini çek
+    const sellerElements = document.querySelectorAll('.pn_v8'); // Satış isimlerinin olduğu alan
+    const sellerData = Array.from(sellerElements).map(seller => ({
+        sellerName: seller.innerText.trim(), // Satış ismini çek
+        priceElement: seller.closest('li')?.querySelector('span.pb_v8') // İlgili fiyat alanını bul
+    }));
 
-        // 2️⃣ Eğer yukarıdaki div'lerde fiyat bulunamazsa, tüm sayfadaki metinlerden fiyat içerenleri al
-        if (priceElements.length === 0) {
-            priceElements = Array.from(document.querySelectorAll('*'))
-                .map(el => el.innerText.trim())
-                .filter(text => text.includes('₺')); // Sadece ₺ içerenleri al
-        }
+    // Fiyat ve satış ismi eşleştirme
+    const salesData = sellerData.map(data => ({
+        sellerName: data.sellerName,
+        price: data.priceElement ? extractPrice(data.priceElement.innerText.trim()) : 0
+    }));
 
-        // 3️⃣ Çekilen fiyatlardan geçerli olanları bul
-        const prices = priceElements.map(text => extractPrice(text)).filter(price => price > 0);
+    // "İthalatçı" içerenleri çıkar
+    const validSales = salesData.filter(data => !data.sellerName.includes('İthalatçı'));
 
-        if (prices.length === 0) {
-            return { name, sitePrice: 0 }; // Eğer fiyat bulunamazsa sitePrice = 0
-        }
+    if (validSales.length === 0) {
+        return { name, sitePrice: 0 }; // Geçerli satış ismi ve fiyat yoksa
+    }
 
-        // 4️⃣ Ortalama ve standart sapma hesaplama
-        const mean = prices.reduce((sum, val) => sum + val, 0) / prices.length;
-        const variance = prices.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / prices.length;
-        const stdDev = Math.sqrt(variance);
+    // Geçerli fiyatları al
+    const validPrices = validSales.map(data => data.price).filter(price => price > 0);
+    if (validPrices.length === 0) {
+        return { name, sitePrice: 0 }; // Geçerli fiyat yoksa sitePrice = 0
+    }
 
-        // 5️⃣ Güvenilir fiyat aralığını belirle (ortalama ± 1 standart sapma)
-        const minThreshold = mean - stdDev;
-        const maxThreshold = mean + stdDev;
+    // İlk 5 fiyatı al
+    const firstFivePrices = validPrices.slice(0, 5);
 
-        // 6️⃣ Uç değerleri çıkarıp yeni ortalama al
-        const filteredPrices = prices.filter(price => price >= minThreshold && price <= maxThreshold);
-        const finalPrice = filteredPrices.length > 0
-            ? filteredPrices.reduce((sum, val) => sum + val, 0) / filteredPrices.length
-            : mean; // Eğer filtrelenen fiyat yoksa, orijinal ortalama kullan
+    // İlk 5 fiyatın ortalamasını al
+    const averagePrice = firstFivePrices.reduce((sum, price) => sum + price, 0) / firstFivePrices.length;
 
-        return { name, sitePrice: finalPrice };
-        //fazladan bir fiyat daha vardı onu kaldırdım
-    });
+
+  /*  // Ortalama ve standart sapma hesaplama
+    const mean = validPrices.reduce((sum, val) => sum + val, 0) / validPrices.length;
+    const variance = validPrices.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / validPrices.length;
+    const stdDev = Math.sqrt(variance);
+
+    // Güvenilir fiyat aralığını belirle (ortalama ± 1 standart sapma)
+    const minThreshold = mean - stdDev;
+    const maxThreshold = mean + stdDev;
+
+    // Uç değerleri çıkar ve yeni ortalama al
+    const filteredPrices = validPrices.filter(price => price >= minThreshold && price <= maxThreshold);
+    const finalPrice = filteredPrices.length > 0
+        ? filteredPrices.reduce((sum, val) => sum + val, 0) / filteredPrices.length
+        : mean;
+*/
+return { 
+    name, 
+    sitePrice: averagePrice // Ortalama fiyatı döndür
+};
+
+});
+
     const myPriceKeys = Object.keys(myPrices);
     const currentKey = myPriceKeys[index];
     const myPrice = myPrices[currentKey] || 0;
