@@ -2,6 +2,7 @@ const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require("fs");
 puppeteer.use(StealthPlugin());
+const nodemailer = require("nodemailer");
 
 
 let count = 0;
@@ -12,12 +13,13 @@ function sleep(ms) {
 
 // Item sınıfı
 class Item {
-    constructor(id, name, price, sitePrice, link) {
+    constructor(id, name, price, sitePrice,upgradedPrice, link) {
         this.id = id;
         this.name = name;
         this.price = price;
         this.sitePrice = sitePrice;
         this.link = link;
+        this.upgradedPrice = upgradedPrice;
     }
 }
 
@@ -48,14 +50,14 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
 
     let index = 0; // MyPrices sözlüğü için bir sayaç
 
+    // Anormallik kontrol ve e-posta bildirimi
     for (const link of links) {
         console.log(`"${link}" için bilgi alınıyor...`);
-        if(count>=3) break;
 
-        //if(count >= 3) break;
-        await page.goto(link, { waitUntil: 'networkidle2' });
 
-        // Ürün adı ve fiyatlarını çek
+        if (count >= 3) break;
+        await page.goto(link, { waitUntil: "networkidle2" });
+
         const result = await page.evaluate(() => {
             function extractPrice(text) {
                 return parseFloat(text.replace(/\./g, '').replace(',', '.')) || 0;
@@ -101,41 +103,144 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
             return { name, sitePrice: finalPrice };
             //fazladan bir fiyat daha vardı onu kaldırdım
         });
+        const myPriceKeys = Object.keys(myPrices);
+        const currentKey = myPriceKeys[index];
+        const myPrice = myPrices[currentKey] || 0;//değiştirmem gerektiği için let yaptım
 
+        console.log(`MyPrices Key: ${currentKey}, Fiyat: ${myPrice}`);
+        let upgradedPrice = myPrice;
+        if (myPrice > 70000) {
+            upgradedPrice = myPrice - (myPrice * 0.01);
+        } else if (myPrice > 50000) {
+            upgradedPrice = myPrice - (myPrice * 0.02);
 
-       
-        // MyPrices'deki sıradaki fiyatı al
-        const myPriceKeys = Object.keys(myPrices); // MyPrices anahtarlarının sırasını al
-        const currentKey = myPriceKeys[index];    // Şu anki anahtarı al
-        const myPrice = myPrices[currentKey] || 0; // Sözlükteki sıradaki fiyat
+        } else if (myPrice > 30000) {
+            upgradedPrice = myPrxice - (myPrice * 0.03);
+        } else if (myPrice > 10000) {
+            upgradedPrice = myPrice - (myPrice * 0.05);
+        } else {
+            upgradedPrice = myPrice - (myPrice * 0.10);
+        }
+        const item = new Item(id, result.name, myPrice, result.sitePrice,upgradedPrice, link);
 
-        console.log(`MyPrices Key: ${currentKey}, Fiyat: ${myPrice}`); // Kontrol amaçlı log
-
-        // Yeni bir Item objesi oluştur ve listeye ekle
-        const item = new Item(id, result.name, myPrice, result.sitePrice, link);
         items.push(item);
-
-        // Anormallik hesabı yap
+        
         if (myPrice > 0 && result.sitePrice > 0) {
-            const difference = Math.abs(myPrice - result.sitePrice);
-            const percentageDifference = (difference / myPrice) * 100;
+            // 70 den fazlaysa yüzde 1 50 den fazlaysa yüzde 2 30 dan fazlaysa yüzde 3 10 dan fazlaysa yüzde 5 farkı takip et
+            //çıkaracak şekilde yaptım çünkü kontrolü çıkarılmış üstünden yapıcaz
+            if(myPrice>70000){
+                upgradedPrice = myPrice - (myPrice * 0.01);
+            }else if(myPrice>50000){
+                upgradedPrice = myPrice - (myPrice * 0.02);
 
-            // %1'den büyük farkları anormallik olarak kaydet
-            if (percentageDifference > 1) {
+            }else if(myPrice>30000){
+                upgradedPrice = myPrxice - (myPrice * 0.03);
+            }else if(myPrice>10000){
+                upgradedPrice = myPrice - (myPrice * 0.05);
+            }else{
+                upgradedPrice = myPrice - (myPrice * 0.10);
+            }
+
+            const difference = Math.abs(myPrice - result.sitePrice);
+            const percentageDifference = (difference / upgradedPrice) * 100;
+
+            
+            //eğer fiyat aralığı 70 den büyükse yüzde 2 fark takib et
+            if (percentageDifference > 2 && upgradedPrice >70000) {
                 anomalies.push({
                     name: result.name,
                     myPrice: myPrice,
                     sitePrice: result.sitePrice,
-                    percentageDifference: percentageDifference.toFixed(2),
+                    upgradedPrice: upgradedPrice,
+                    percentageDifference: percentageDifference.toFixed(2)
                 });
+
+
+                // E-posta gönderimi
+                const subject = `Anormallik Tespiti: ${result.name}`;
+                const message = `
+Ürün: ${result.name}
+Bizim Fiyatımız: ${myPrice} TL
+anormallik hesapladığımız Fiyat: ${upgradedPrice} TL
+Site Fiyatı: ${result.sitePrice} TL
+Fark (%): ${percentageDifference.toFixed(2)}%
+Link: ${link}
+            `;
+                await sendEmail(subject, message); // E-posta gönder
+            }//eğer fiyat aralığı 70 den küçükse ve 50 den büyükse yüzde 5 fark takib et
+            else if (percentageDifference > 5 && upgradedPrice >50000) {
+                anomalies.push({
+                    name: result.name,
+                    myPrice: myPrice,
+                    sitePrice: result.sitePrice,
+                    percentageDifference: percentageDifference.toFixed(2)
+                });
+
+
+                // E-posta gönderimi
+                const subject = `Anormallik Tespiti: ${result.name}`;
+                const message = `
+Ürün: ${result.name}
+Bizim Fiyatımız: ${myPrice} TL
+anormallik hesapladığımız Fiyat: ${upgradedPrice} TL
+Site Fiyatı: ${result.sitePrice} TL
+Fark (%): ${percentageDifference.toFixed(2)}%
+Link: ${link}
+            `;
+                await sendEmail(subject, message); // E-posta gönder
+            }//eğer fiyat aralığı 50 den küçükse ve 30 dan büyükse yüzde 7 fark takib et
+            else if (percentageDifference > 7 && upgradedPrice > 30000) {
+                anomalies.push({
+                    name: result.name,
+                    myPrice: myPrice,
+                    sitePrice: result.sitePrice,
+                    upgradedPrice: upgradedPrice,
+                    percentageDifference: percentageDifference.toFixed(2)
+                });
+
+
+                // E-posta gönderimi
+                const subject = `Anormallik Tespiti: ${result.name}`;
+                const message = `
+Ürün: ${result.name}
+Bizim Fiyatımız: ${myPrice} TL
+anormallik hesapladığımız Fiyat: ${upgradedPrice} TL
+Site Fiyatı: ${result.sitePrice} TL
+Fark (%): ${percentageDifference.toFixed(2)}%
+Link: ${link}
+            `;
+                await sendEmail(subject, message); // E-posta gönder
+            }//eğer fiyat aralığı 30 dan küçükse ve 10 dan büyükse yüzde 10 fark takib et
+            else if (percentageDifference > 10 && upgradedPrice > 10000) {
+                anomalies.push({
+                    name: result.name,
+                    myPrice: myPrice,
+                    sitePrice: result.sitePrice,
+                    upgradedPrice: upgradedPrice,
+                    percentageDifference: percentageDifference.toFixed(2)
+                });
+
+
+                // E-posta gönderimi
+                const subject = `Anormallik Tespiti: ${result.name}`;
+                const message = `
+Ürün: ${result.name}
+Bizim Fiyatımız: ${myPrice} TL
+anormallik hesapladığımız Fiyat: ${upgradedPrice} TL
+Site Fiyatı: ${result.sitePrice} TL
+Fark (%): ${percentageDifference.toFixed(2)}%
+Link: ${link}
+            `;
+                await sendEmail(subject, message); // E-posta gönder
             }
+
+
         }
 
-        index++; // Bir sonraki MyPrices anahtarına geç
-        id++;    // ID'yi artır
+        index++;
+        id++;
         count++;
-        // İstekler arası gecikme
-        await sleep(Math.floor(Math.random() * (5000 - 1000 + 1)) + 1000); // 1-5 saniye bekle
+        await sleep(Math.floor(Math.random() * (5000 - 1000 + 1)) + 1000);
     }
 
 
@@ -151,6 +256,7 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
             return `Anormallik: ${item.name}\n` +
                 `  Site Fiyatı: ${item.sitePrice} TL\n` +
                 `  Bizim Fiyatımız: ${item.myPrice} TL\n` +
+                `  anormallik hesapladığımız Fiyat: ${item.upgradedPrice} TL\n` +
                 `  Fark (%): ${item.percentageDifference}%\n`;
         }).join('\n');
         fs.writeFileSync('anormal.txt', anomalyReport, 'utf-8');
@@ -207,3 +313,34 @@ async function processPdf(filePath) {
         return {};
     }
 }
+
+
+// E-posta gönderme fonksiyonu
+async function sendEmail(subject, message) {
+    const transporter = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 587,
+        secure: false, // Port 465 için true
+        auth: {
+            user: "networksnotification@gmail.com", // E-posta adresiniz
+            pass: "gwqf ifoi comc wpvc"  // Gmail şifreniz
+        }
+    });
+
+    const mailOptions = {
+        from: "networksnotification@gmail.com",
+        to: "emirxdizdar@gmail.com",
+        subject: subject,
+        text: message
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        console.log("E-posta başarıyla gönderildi!");
+    } catch (error) {
+        console.error("E-posta gönderimi sırasında bir hata oluştu:", error);
+    }
+}
+
+// Örnek çağrı
+sendEmail("Başlık", "Bu bir test e-postasıdır.");
