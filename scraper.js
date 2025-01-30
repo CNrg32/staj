@@ -55,7 +55,7 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
         console.log(`"${link}" için bilgi alınıyor...`);
 
 
-        if (count >= 3) break;
+        if (count >= 10) break;
         await page.goto(link, { waitUntil: "networkidle2" });
 
         const result = await page.evaluate(() => {
@@ -66,26 +66,40 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
             // Ürün adı çekme
             const name = document.querySelector('h1')?.innerText.trim() || 'Ürün adı bulunamadı';
 
-            // 1️⃣ Akakçe'deki bilinen fiyat alanlarını kontrol et
-            let priceElements = [
-                ...document.querySelectorAll('.pd_v8, span.pb_v8, .some-other-class') // Farklı fiyat class'ları eklenebilir
-            ].map(el => el.innerText.trim());
+            // Satış isimlerini çek
+            const sellerElements = document.querySelectorAll('.pn_v8'); // Satış isimlerinin olduğu alan
+            const sellerData = Array.from(sellerElements).map(seller => ({
+                sellerName: seller.innerText.trim(), // Satış ismini çek
+                priceElement: seller.closest('li')?.querySelector('span.pb_v8') // İlgili fiyat alanını bul
+            }));
 
-            // 2️⃣ Eğer yukarıdaki div'lerde fiyat bulunamazsa, tüm sayfadaki metinlerden fiyat içerenleri al
-            if (priceElements.length === 0) {
-                priceElements = Array.from(document.querySelectorAll('*'))
-                    .map(el => el.innerText.trim())
-                    .filter(text => text.includes('₺')); // Sadece ₺ içerenleri al
+            // Fiyat ve satış ismi eşleştirme
+            const salesData = sellerData.map(data => ({
+                sellerName: data.sellerName,
+                price: data.priceElement ? extractPrice(data.priceElement.innerText.trim()) : 0
+            }));
+
+            // "İthalatçı" içerenleri çıkar
+            const validSales = salesData.filter(data => !data.sellerName.includes('İthalatçı'));
+
+            if (validSales.length === 0) {
+                return { name, sitePrice: 0 }; // Geçerli satış ismi ve fiyat yoksa
             }
 
-            // 3️⃣ Çekilen fiyatlardan geçerli olanları bul
-            const prices = priceElements.map(text => extractPrice(text)).filter(price => price > 0);
-
-            if (prices.length === 0) {
-                return { name, sitePrice: 0 }; // Eğer fiyat bulunamazsa sitePrice = 0
+            // Geçerli fiyatları al
+            const validPrices = validSales.map(data => data.price).filter(price => price > 0);
+            if (validPrices.length === 0) {
+                return { name, sitePrice: 0 }; // Geçerli fiyat yoksa sitePrice = 0
             }
 
-            // 4️⃣ Ortalama ve standart sapma hesaplama
+            // İlk 5 fiyatı al
+            const firstFivePrices = validPrices.slice(0, 5);
+
+            // İlk 5 fiyatın ortalamasını al
+            const averagePrice = firstFivePrices.reduce((sum, price) => sum + price, 0) / firstFivePrices.length;
+
+
+            /*// 4️⃣ Ortalama ve standart sapma hesaplama
             const mean = prices.reduce((sum, val) => sum + val, 0) / prices.length;
             const variance = prices.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / prices.length;
             const stdDev = Math.sqrt(variance);
@@ -99,8 +113,11 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
             const finalPrice = filteredPrices.length > 0
                 ? filteredPrices.reduce((sum, val) => sum + val, 0) / filteredPrices.length
                 : mean; // Eğer filtrelenen fiyat yoksa, orijinal ortalama kullan
-
-            return { name, sitePrice: finalPrice };
+            */
+            return {
+                name,
+                sitePrice: averagePrice // Ortalama fiyatı döndür
+            };
             //fazladan bir fiyat daha vardı onu kaldırdım
         });
         const myPriceKeys = Object.keys(myPrices);
@@ -115,7 +132,7 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
             upgradedPrice = myPrice - (myPrice * 0.02);
 
         } else if (myPrice > 30000) {
-            upgradedPrice = myPrxice - (myPrice * 0.03);
+            upgradedPrice = myPrice - (myPrice * 0.03);
         } else if (myPrice > 10000) {
             upgradedPrice = myPrice - (myPrice * 0.05);
         } else {
@@ -134,7 +151,7 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
                 upgradedPrice = myPrice - (myPrice * 0.02);
 
             }else if(myPrice>30000){
-                upgradedPrice = myPrxice - (myPrice * 0.03);
+                upgradedPrice = myPrice - (myPrice * 0.03);
             }else if(myPrice>10000){
                 upgradedPrice = myPrice - (myPrice * 0.05);
             }else{
@@ -152,7 +169,8 @@ const pdfPath = "./Networks Bilişim - Fiyat Listesi - 21012025.pdf";
                     myPrice: myPrice,
                     sitePrice: result.sitePrice,
                     upgradedPrice: upgradedPrice,
-                    percentageDifference: percentageDifference.toFixed(2)
+                    percentageDifference: percentageDifference.toFixed(2),
+                    link: link // Doğru şekilde link'i atıyoruz
                 });
 
 
@@ -166,14 +184,15 @@ Site Fiyatı: ${result.sitePrice} TL
 Fark (%): ${percentageDifference.toFixed(2)}%
 Link: ${link}
             `;
-                await sendEmail(subject, message); // E-posta gönder
+                //await sendEmail(subject, message); // E-posta gönder
             }//eğer fiyat aralığı 70 den küçükse ve 50 den büyükse yüzde 5 fark takib et
             else if (percentageDifference > 5 && upgradedPrice >50000) {
                 anomalies.push({
                     name: result.name,
                     myPrice: myPrice,
                     sitePrice: result.sitePrice,
-                    percentageDifference: percentageDifference.toFixed(2)
+                    percentageDifference: percentageDifference.toFixed(2),
+                    link: link
                 });
 
 
@@ -187,7 +206,7 @@ Site Fiyatı: ${result.sitePrice} TL
 Fark (%): ${percentageDifference.toFixed(2)}%
 Link: ${link}
             `;
-                await sendEmail(subject, message); // E-posta gönder
+                //await sendEmail(subject, message); // E-posta gönder
             }//eğer fiyat aralığı 50 den küçükse ve 30 dan büyükse yüzde 7 fark takib et
             else if (percentageDifference > 7 && upgradedPrice > 30000) {
                 anomalies.push({
@@ -195,7 +214,8 @@ Link: ${link}
                     myPrice: myPrice,
                     sitePrice: result.sitePrice,
                     upgradedPrice: upgradedPrice,
-                    percentageDifference: percentageDifference.toFixed(2)
+                    percentageDifference: percentageDifference.toFixed(2),
+                    link: link
                 });
 
 
@@ -209,7 +229,7 @@ Site Fiyatı: ${result.sitePrice} TL
 Fark (%): ${percentageDifference.toFixed(2)}%
 Link: ${link}
             `;
-                await sendEmail(subject, message); // E-posta gönder
+                //await sendEmail(subject, message); // E-posta gönder
             }//eğer fiyat aralığı 30 dan küçükse ve 10 dan büyükse yüzde 10 fark takib et
             else if (percentageDifference > 10 && upgradedPrice > 10000) {
                 anomalies.push({
@@ -217,7 +237,8 @@ Link: ${link}
                     myPrice: myPrice,
                     sitePrice: result.sitePrice,
                     upgradedPrice: upgradedPrice,
-                    percentageDifference: percentageDifference.toFixed(2)
+                    percentageDifference: percentageDifference.toFixed(2),
+                    link: link
                 });
 
 
@@ -231,7 +252,7 @@ Site Fiyatı: ${result.sitePrice} TL
 Fark (%): ${percentageDifference.toFixed(2)}%
 Link: ${link}
             `;
-                await sendEmail(subject, message); // E-posta gönder
+                //await sendEmail(subject, message); // E-posta gönder
             }
 
 
@@ -245,6 +266,25 @@ Link: ${link}
 
 
     console.log('Ürünler oluşturuldu:', items);
+    // Anormallikleri toplu e-posta ile gönder
+    if (anomalies.length > 0) {
+        const anomalyReport = anomalies.map(item => {
+            return `Anormallik: ${item.name}\n` +
+                `  Bizim Fiyatımız: ${item.myPrice} TL\n` +
+                `  Site Fiyatı: ${item.sitePrice} TL\n` +
+                `  Fark (%): ${item.percentageDifference}%\n` +
+                `  Link: ${item.link}\n`; // Link'i ekliyoruz
+
+        }).join('\n');
+
+        const subject = "Anormallik Tespit Raporu";
+        const message = `Aşağıdaki ürünlerde anormallik tespit edilmiştir:\n\n${anomalyReport}`;
+        await sendEmail(subject, message); // E-posta gönder
+    } else {
+        const subject = "Anormallik Tespit Raporu";
+        const message = "Hiçbir anormallik tespit edilmemiştir.";
+        await sendEmail(subject, message); // E-posta gönder
+    }
 
     // Objeleri bir dosyaya yazdır
     fs.writeFileSync('items.json', JSON.stringify(items, null, 2), 'utf-8');
