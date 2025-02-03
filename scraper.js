@@ -371,7 +371,7 @@ async function sendEmail(subject, message) {
         from: "networksnotification@gmail.com",
         to: "emirxdizdar@gmail.com",
         to :"halilmelih32@gmail.com",//buraada mail adresi yazılacak
-        to: "halilmelih32@gmail.com",//buraada fatih abinin mail adresi yazılacak
+        to: "mfatihgumus@networksbilisim.com",//buraada fatih abinin mail adresi yazılacak
         subject: subject,
         text: message
     };
