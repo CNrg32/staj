@@ -11,29 +11,104 @@ const { downloadLatestPdf } = require('./downloadPdfFromGmail'); // Gmail'den PD
 const axios = require('axios');
 const { storage } = require('googleapis/build/src/apis/storage');
 
-
-class Item {
-    constructor(id, name, buyPrice, sitePrice, link, storageName, colorName, upgradedPrice, stockQuantity) {
+                          
+class Item {                      //item sınıfı değişti
+    constructor(id, name, buyPrice, sitePrice, link, storageName, colorName, stockQuantity) {
         this.id = id;
         this.name = name;
         this.buyPrice = buyPrice;
         this.sitePrice = sitePrice;
         this.link = link;
-        this.storageName = storageName;
+        this.storageName = storageName;                                                               
         this.colorName = colorName;
-        this.upgradedPrice = upgradedPrice;  // Bu satırda upgradedPrice doğru şekilde atanmalı
         this.stockQuantity = stockQuantity;  // Bu satırda stockQuantity doğru şekilde atanmalı
     }
 }
 
-// API'den ürün verilerini çekme
-async function fetchProductData() {
+
+async function fetchProductData() {                    //bu fonskyion eklendi
     try {
         const response = await axios.get('https://networksadmin.netliste.com/api/getProductListWithAkakceURL');
         const products = response.data;
 
-        // Her ürün için Item objesi oluştur
-        const items = products.map((product, index) => {
+        // 1. iPhone ürünleri (İsimde "iPhone" geçenler)
+        let iphoneProducts = products
+            .filter(product => product.productName.toLowerCase().includes("iphone"))
+            .sort((a, b) => parseFloat(b.buyPrice) - parseFloat(a.buyPrice));
+
+        // 2. iPad ürünleri (İsimde "iPad" geçenler)
+        let ipadProducts = products
+            .filter(product => product.productName.toLowerCase().includes("ipad")) 
+            .sort((a, b) => parseFloat(b.buyPrice) - parseFloat(a.buyPrice));
+
+        // 3. AirPods ürünleri (İsimde "AirPods" geçenler)
+        let airpodsProducts = products
+            .filter(product => product.productName.toLowerCase().includes("airpods"))
+            .sort((a, b) => parseFloat(b.buyPrice) - parseFloat(a.buyPrice));
+
+        // 4. Samsung ürünleri (Linkinde "samsung" geçenler)
+        let allSamsungProducts = products.filter(product => product.akakceURL.toLowerCase().includes("samsung"));
+
+        // 4.1 "S" harfi ile başlayan Samsung ürünleri
+        let samsungSProducts = allSamsungProducts
+            .filter(product => product.productName.trim().toLowerCase().startsWith("s"))
+            .sort((a, b) => parseFloat(b.buyPrice) - parseFloat(a.buyPrice));
+
+        // 4.2 "A" harfi ile başlayan Samsung ürünleri
+        let samsungAProducts = allSamsungProducts
+            .filter(product => product.productName.trim().toLowerCase().startsWith("a"))
+            .sort((a, b) => parseFloat(b.buyPrice) - parseFloat(a.buyPrice));
+
+        // 4.3 "M" harfi ile başlayan Samsung ürünleri
+        let samsungMProducts = allSamsungProducts
+            .filter(product => product.productName.trim().toLowerCase().startsWith("m"))
+            .sort((a, b) => parseFloat(b.buyPrice) - parseFloat(a.buyPrice));
+
+        // 4.4 Diğer Samsung ürünleri (Ne S, ne A, ne M ile başlıyor)
+        let otherSamsungProducts = allSamsungProducts
+            .filter(product =>
+                !product.productName.trim().toLowerCase().startsWith("s") &&
+                !product.productName.trim().toLowerCase().startsWith("a") &&
+                !product.productName.trim().toLowerCase().startsWith("m")
+            )
+            .sort((a, b) => parseFloat(b.buyPrice) - parseFloat(a.buyPrice));
+
+        // 5. Redmi ürünleri (İsimde "Redmi" geçenler)
+        let redmiProducts = products
+            .filter(product => product.productName.toLowerCase().includes("redmi"))
+            .sort((a, b) => parseFloat(b.buyPrice) - parseFloat(a.buyPrice));
+
+        // 6. Lenovo ürünleri (İsimde "Lenovo" geçenler)
+        let lenovoProducts = products
+            .filter(product => product.productName.toLowerCase().includes("lenovo"))
+            .sort((a, b) => parseFloat(b.buyPrice) - parseFloat(a.buyPrice));
+
+        // 7. Geriye kalan diğer ürünler (Yukarıdaki hiçbir kategoriye girmeyenler)
+        const otherProducts = products.filter(product =>
+            !product.productName.toLowerCase().includes("iphone") &&
+            !product.productName.toLowerCase().includes("ipad") &&
+            !product.productName.toLowerCase().includes("airpods") &&
+            !product.akakceURL.toLowerCase().includes("samsung") &&
+            !product.productName.toLowerCase().includes("redmi") &&
+            !product.productName.toLowerCase().includes("lenovo")
+        );
+
+        // **Önceliklendirilmiş sıralı listeyi oluştur**
+        const sortedProducts = [
+            ...iphoneProducts,
+            ...ipadProducts,
+            ...airpodsProducts,
+            ...samsungSProducts,  // Samsung "S" ile başlayanlar
+            ...samsungAProducts,  // Samsung "A" ile başlayanlar
+            ...samsungMProducts,  // Samsung "M" ile başlayanlar
+            ...otherSamsungProducts,  // Diğer Samsung ürünleri
+            ...redmiProducts,
+            ...lenovoProducts,
+            ...otherProducts
+        ];
+
+        // Item nesnelerini oluştur
+        const items = sortedProducts.map((product) => {
             return new Item(
                 product.productID,                // id
                 product.productName,              // name
@@ -42,17 +117,20 @@ async function fetchProductData() {
                 product.akakceURL,                // link
                 product.storageName,              // storage
                 product.colorName,                // color
-                0,                                // upgradedPrice (başlangıçta 0, daha sonra güncellenebilir)
                 product.stockQuantity             // stockQuantity
             );
         });
 
-        console.log(items); // Item objelerini konsola yazdır
+        console.log(items)
         return items;
     } catch (error) {
         console.error('Veri çekme hatası:', error.message);
     }
 }
+
+
+
+
 
 // API'den veri çek ve Item objeleri oluştur
 
@@ -132,63 +210,29 @@ function sleep(ms) {
             return {
                 name,
                 sitePrice: averagePrice // Ortalama fiyatı döndür
-            };
+            };                   
         });
+                                                                                                                
 
         item.sitePrice = result.sitePrice; // averagePrice
-
-
-        
         let myPrice = item.buyPrice || 0; // buyPrice'ı kullanıyoruz, item objesindeki buyPrice
 
-        let upgradedPrice = myPrice;
-
-        if (myPrice > 70000) {
-            upgradedPrice = myPrice - (myPrice * 0.01);
-        } else if (myPrice > 50000) {
-            upgradedPrice = myPrice - (myPrice * 0.02);
-
-        } else if (myPrice > 30000) {
-            upgradedPrice = myPrice - (myPrice * 0.03);
-        } else if (myPrice > 10000) {
-            upgradedPrice = myPrice - (myPrice * 0.05);
-        } else {
-            upgradedPrice = myPrice - (myPrice * 0.10);
-        }
-        
-        
-        if (myPrice > 0 && item.sitePrice > 0) {
-            // 70 den fazlaysa yüzde 1 50 den fazlaysa yüzde 2 30 dan fazlaysa yüzde 3 10 dan fazlaysa yüzde 5 farkı takip et
-            //çıkaracak şekilde yaptım çünkü kontrolü çıkarılmış üstünden yapıcaz
-            if(myPrice>70000){
-                upgradedPrice = myPrice - (myPrice * 0.01);
-            }else if(myPrice>50000){
-                upgradedPrice = myPrice - (myPrice * 0.02);
-
-            }else if(myPrice>30000){
-                upgradedPrice = myPrice - (myPrice * 0.03);
-            }else if(myPrice>10000){
-                upgradedPrice = myPrice - (myPrice * 0.05);
-            }else{
-                upgradedPrice = myPrice - (myPrice * 0.10);
-            }
-
-            const difference = Math.abs(myPrice - item.sitePrice);
-            const percentageDifference = (difference / upgradedPrice) * 100;
-
-
+// Anormallik yüzdelik fark hesaplama                                                                            //bu kısımlar değişti. 
+let percentageDifference = 0;
+if (item.sitePrice > 0) {
+    percentageDifference = ((myPrice - item.sitePrice) / item.sitePrice) * 100;
+}
+                                                                                                                  //buralar eklendi
 anomalies.push({
     name: item.name,
     myPrice: myPrice,
     sitePrice: item.sitePrice,
-    upgradedPrice: upgradedPrice,
-    percentageDifference: percentageDifference.toFixed(2),
+    percentageDifference: percentageDifference.toFixed(2), // Negatif veya pozitif olarak görünecek
     link: item.link,
     storageName: item.storageName,
     colorName: item.colorName,
     stockQuantity: item.stockQuantity
 });
-
             /*
            // Fiyat farkına göre anormallik kontrolleri
 if (myPrice > 0 && item.sitePrice > 0) {
@@ -251,11 +295,12 @@ if (myPrice > 0 && item.sitePrice > 0) {
         
 }
 */
-        }
+        
 
         index++;
         id++;
         count++;
+        
         await sleep(Math.floor(Math.random() * (5000 - 1000 + 1)) + 1000);
     }
 
@@ -265,19 +310,17 @@ if (myPrice > 0 && item.sitePrice > 0) {
 if (anomalies.length > 0) {
     // Her bir anormallik içeren ürün için tüm bilgileri ekle
     const anomalyReport = anomalies.map(item => {
-        return `Anormallik: ${item.name}\n` +
+        return `Ürün ismi: ${item.name}\n` +
+        `  Depolama: ${item.storageName}\n` +  // Storage bilgisini ekliyoruz
+        `  Renk: ${item.colorName}\n` +  // Color bilgisini ekliyoruz
             `  Bizim Fiyatımız: ${item.myPrice} TL\n` +
             `  Site Fiyatı: ${item.sitePrice} TL\n` +
-            `  Güncellenmiş Fiyat: ${item.upgradedPrice} TL\n` +  // upgradedPrice bilgisi
-            `  Fark (%): ${item.percentageDifference}%\n` +
+            `  Fark (%): ${item.percentageDifference}%\n` +                                                    //bu kısımlar değişti
             `  Link: ${item.link}\n` +  // Link'i ekliyoruz
-            `  Depolama: ${item.storageName}\n` +  // Storage bilgisini ekliyoruz
-            `  Renk: ${item.colorName}\n` +  // Color bilgisini ekliyoruz
-            `  Stok Miktarı: ${item.stockQuantity}\n` +  // StockQuantity bilgisini ekliyoruz
-            `  Raporlanma Zamanı: ${new Date().toLocaleString()}\n\n`; // Raporlanma zamanını ekliyoruz
+            `  Stok Miktarı: ${item.stockQuantity}\n` ;  // StockQuantity bilgisini ekliyoruz
     }).join('\n');
-    const subject = "Anormallik Tespit Raporu";
-    const message = `Aşağıdaki ürünlerde anormallik tespit edilmiştir:\n\n${anomalyReport}`;
+    const subject = "Ürünlerin Fiyat Raporu";
+    const message = `Aşağıdaki ürünlerin fiyatları tespit edilmiştir:\n\n${anomalyReport}`;
     await sendEmail(subject, message); // E-posta gönder
 } else {
     const subject = "Anormallik Tespit Raporu";
@@ -290,17 +333,16 @@ fs.writeFileSync('items.json', JSON.stringify(items, null, 2), 'utf-8');
 console.log('Ürün objeleri items.json dosyasına kaydedildi.');
 // Anormallikleri anormal.txt dosyasına yazdır
 if (anomalies.length > 0) {
+    // Her bir anormallik içeren ürün için tüm bilgileri ekle                                                       //bu kısımlar değişti
     const anomalyReport = anomalies.map(item => {
-        return `Anormallik: ${item.name}\n` +
-            `  Site Fiyatı: ${item.sitePrice} TL\n` +
+        return `Ürün ismi: ${item.name}\n` +
+        `  Depolama: ${item.storageName}\n` +  // Storage bilgisini ekliyoruz
+        `  Renk: ${item.colorName}\n` +  // Color bilgisini ekliyoruz
             `  Bizim Fiyatımız: ${item.myPrice} TL\n` +
-            `  Anormallik Hesapladığımız Fiyat: ${item.upgradedPrice} TL\n` +
+            `  Site Fiyatı: ${item.sitePrice} TL\n` +
             `  Fark (%): ${item.percentageDifference}%\n` +
-            `  Link: ${item.link}\n` +   // Link'i de ekliyoruz
-            `  Depolama: ${item.storageName}\n` + // Depolama bilgisini ekliyoruz
-            `  Renk: ${item.colorName}\n` + // Renk bilgisini ekliyoruz
-            `  Stok Miktarı: ${item.stockQuantity}\n` + // Stok miktarını ekliyoruz
-            `  ---------------------------------------------\n`;  // Satır sonu ekliyoruz
+            `  Link: ${item.link}\n` +  // Link'i ekliyoruz
+            `  Stok Miktarı: ${item.stockQuantity}\n` ;  // StockQuantity bilgisini ekliyoruz
     }).join('\n');
     
     // Anormallik raporunu anormal.txt dosyasına kaydet
@@ -309,12 +351,7 @@ if (anomalies.length > 0) {
 } else {
     console.log('Anormallik tespit edilmedi.');
 }
-
-
-
     await browser.close();
-
-
 })();
 
 // PDF işleme fonksiyonu
@@ -356,8 +393,8 @@ async function sendEmail(subject, message) {
         from: "networksnotification@gmail.com",
         to: "emirxdizdar@gmail.com",
         to: "networksnotification@gmail.com",
-        to: "mfatihgumus@networksbilisim.com", 
-        to: "ayberkozkaya@hotmail.com",
+        //to: "mfatihgumus@networksbilisim.com", 
+        //to: "ayberkozkaya@hotmail.com",
         subject: subject,
         text: message
     };
